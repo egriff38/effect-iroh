@@ -9,8 +9,8 @@ import { layerSocketServer, makeSocket } from "./IrohSocket.js"
 import type { ServerOptions } from "./IrohSocket.js"
 
 /**
- * Client protocol to one peer. `retryTransientErrors` stays off: with it on, a ping timeout
- * (dead peer) is swallowed and in-flight streams hang; off, they fail and callers can resubscribe.
+ * Client protocol to one peer. `retryTransientErrors` stays off so connection failures reach
+ * callers as `RpcClientError` instead of being retried silently; streams that care resubscribe.
  */
 export const makeProtocolClient = (
   peer: PeerAddress,
