@@ -44,8 +44,7 @@ const energy = Atom.map(
 
 ## Known issues
 
-- **Effect RPC:** the socket protocol's ping interval (5 s) is not configurable, so a crashed peer takes about 10 s to detect.
-- **iroh JS bindings:** `RecvStream.stop()` waits for the same lock as a pending `read()`, so awaiting it from a stream `cancel` deadlocks; `effect-iroh` doesn't await it. Bytes cross the binding as `Array<number>`, one copy each way ([n0-computer/iroh-ffi#276](https://github.com/n0-computer/iroh-ffi/issues/276)). Node only (napi); no gossip, blobs or docs from JS.
+- **iroh JS bindings:** `RecvStream.stop()` waits for the same lock as a pending `read()`, so awaiting it from a stream `cancel` deadlocks; `effect-iroh` doesn't await it ([n0-computer/iroh-ffi#309](https://github.com/n0-computer/iroh-ffi/issues/309)). Bytes cross the binding as `Array<number>`, one copy each way ([n0-computer/iroh-ffi#276](https://github.com/n0-computer/iroh-ffi/issues/276)). Node only (napi); no gossip, blobs or docs from JS.
 - iroh binds an IPv6 socket on `[::]` alongside the requested one; it appears in `IrohEndpoint.addresses` but isn't a dialable address.
 - Replication sends a field's full state on every change and assumes a full mesh. Fine for small clusters; deltas and gossip are future work.
 
