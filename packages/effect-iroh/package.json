@@ -1,0 +1,45 @@
+{
+  "name": "effect-iroh",
+  "version": "0.0.0",
+  "description": "Experimental: iroh (QUIC, dial-by-key) as an Effect transport: endpoint layer, Socket, RPC protocols.",
+  "type": "module",
+  "license": "MIT",
+  "sideEffects": false,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/egriff38/effect-iroh.git",
+    "directory": "packages/effect-iroh"
+  },
+  "keywords": ["effect", "effect-ts", "iroh", "quic", "p2p", "rpc"],
+  "exports": {
+    ".": "./src/index.ts",
+    "./package.json": "./package.json"
+  },
+  "publishConfig": {
+    "access": "public",
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.mts",
+        "import": "./dist/index.mjs"
+      },
+      "./package.json": "./package.json"
+    }
+  },
+  "files": ["dist", "LICENSE", "README.md"],
+  "scripts": {
+    "build": "tsdown",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "bun test"
+  },
+  "peerDependencies": {
+    "effect": "catalog:prod"
+  },
+  "dependencies": {
+    "@number0/iroh": "catalog:prod"
+  },
+  "devDependencies": {
+    "effect": "catalog:prod",
+    "publint": "catalog:dev",
+    "tsdown": "catalog:dev"
+  }
+}
