@@ -2,7 +2,7 @@
 
 > **Experimental.** APIs will change. Not published to npm yet.
 
-[iroh](https://iroh.computer) (QUIC, dial by public key, NAT traversal) as a transport for [Effect](https://effect.website), plus CRDT-replicated services that compose with Effect's own atoms.
+[iroh](https://iroh.computer) (QUIC, dial by public key, NAT traversal) as a transport for [Effect](https://effect.website): endpoints as layers, iroh streams as Effect `Socket`s, Effect RPC (and so `AtomRpc`) over iroh.
 
 | Package | What it is | Depends on |
 |---|---|---|
@@ -20,27 +20,46 @@ They are separate on purpose: `effect-replicated` doesn't know about iroh (its t
 
 ```sh
 pnpm install
-pnpm --filter example-crdt-thermostat start
+pnpm --filter example-atomrpc-thermostat start
 ```
 
-## Element code
+## Quick look
+
+An ordinary `RpcGroup`, served over iroh and consumed as atoms with Effect's own `AtomRpc`:
 
 ```ts
-class Thermostat extends Context.Service<Thermostat, {
-  readonly energy: Replica.Field<Crdt.PNCounterState, number>
-  readonly setpoint: Replica.Field<Crdt.MVRegisterState<number>, Crdt.Resolved<number>>
-}>()("acme/Thermostat") {}
+class ThermostatRpcs extends RpcGroup.make(
+  Rpc.make("Temperature", { success: Schema.Number, stream: true }),
+  Rpc.make("SetTemperature", { payload: { value: Schema.Number } })
+) {}
 
-const Setpoint = Crdt.MVRegister(Schema.Number, (concurrent) => Math.max(...concurrent)) // resolver
-const runtime = Atom.runtime(
-  Replicated.layer(Thermostat, { energy: Crdt.PNCounter, setpoint: Setpoint })
-    .pipe(Layer.provide(Replica.layerOffline)) // nodes swap in a networked Replica
+// provider: handlers over a SubscriptionRef, on an iroh endpoint
+RpcServer.layer(ThermostatRpcs).pipe(
+  Layer.provide(ThermostatRpcs.toLayer({
+    Temperature: () => SubscriptionRef.changes(temperature),
+    SetTemperature: ({ value }) => SubscriptionRef.set(temperature, value)
+  })),
+  Layer.provide(IrohRpc.layerProtocolServer({ alpn: "example/thermostat/1" })),
+  Layer.provide(RpcSerialization.layerNdjson),
+  Layer.provide(IrohEndpoint.layer({ secretKey }))
 )
-const energy = Atom.map(
-  runtime.subscriptionRef(Effect.gen(function*() { return (yield* Thermostat).energy.state })),
-  AsyncResult.map(Crdt.PNCounter.value)
-)
+
+// consumer: AtomRpc whose protocol dials the provider by its key
+class Thermostat extends AtomRpc.Service<Thermostat>()("example/Thermostat", {
+  group: ThermostatRpcs,
+  protocol: IrohRpc.layerProtocolClient(provider, "example/thermostat/1").pipe(
+    Layer.provide(IrohEndpoint.layer({ secretKey: IrohEndpoint.generateSecretKey() })),
+    Layer.provide(RpcSerialization.layerNdjson)
+  )
+}) {}
+
+const temperature = Thermostat.runtime.atom(Stream.unwrap(Effect.gen(function*() {
+  return (yield* Thermostat)("Temperature", undefined) // a live atom, not a paged query
+})))
+const setTemperature = Thermostat.mutation("SetTemperature")
 ```
+
+For CRDT-replicated services over the same transport, see [`examples/crdt-thermostat`](examples/crdt-thermostat) and [`effect-replicated`](packages/effect-replicated).
 
 ## Known issues
 
