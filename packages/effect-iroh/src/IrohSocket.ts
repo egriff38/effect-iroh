@@ -56,7 +56,11 @@ export interface ServerOptions {
   readonly allow?: ((peer: string) => boolean) | undefined
 }
 
-/** SocketServer accepting `alpn` connections on the context's IrohEndpoint. One stream per connection. */
+/**
+ * SocketServer accepting `alpn` connections on the context's IrohEndpoint. Every bidirectional
+ * stream a peer opens becomes its own Socket, so one connection can carry one shared stream or
+ * one stream per request.
+ */
 export const layerSocketServer = (options: ServerOptions): Layer.Layer<SocketServer.SocketServer, never, IrohEndpoint> =>
   Layer.effect(SocketServer.SocketServer, Effect.gen(function*() {
     const ep = yield* IrohEndpoint
@@ -80,10 +84,17 @@ export const layerSocketServer = (options: ServerOptions): Layer.Layer<SocketSer
                   conn.close(403n, Array.from(new TextEncoder().encode("not a member")))
                   return
                 }
-                const bi = yield* Effect.tryPromise(() => conn.acceptBi())
-                const socket = yield* Socket.fromTransformStream(Effect.succeed(toTransform(bi)))
-                yield* handler(socket)
+                const streams = yield* FiberSet.make()
+                while (true) {
+                  const bi = yield* Effect.tryPromise(() => conn.acceptBi()) // fails once the connection closes
+                  const socket = yield* Socket.fromTransformStream(Effect.succeed(toTransform(bi)))
+                  yield* FiberSet.run(
+                    streams,
+                    handler(socket).pipe(Effect.catchCause((cause) => Effect.logDebug("effect-iroh: stream ended", cause)))
+                  )
+                }
               }).pipe(
+                Effect.scoped,
                 Effect.ensuring(Effect.sync(() => conn.close(0n, []))),
                 Effect.catchCause((cause) => Effect.logDebug("effect-iroh: connection ended", cause))
               )

@@ -5,8 +5,7 @@
  */
 import iroh from "@number0/iroh"
 import type * as I from "@number0/iroh"
-import { Config, Context, Effect, FiberSet, Layer, Queue, Redacted } from "effect"
-import type { Scope } from "effect"
+import { Config, Context, Effect, FiberSet, Layer, Queue, Redacted, Result, Scope, SubscriptionRef } from "effect"
 import { NetAddress } from "effect/net"
 
 export interface PeerAddress {
@@ -14,6 +13,8 @@ export interface PeerAddress {
   readonly id: string
   /** Direct addresses to try. Only reachability: identity is checked on the key. */
   readonly addresses: ReadonlyArray<NetAddress.InetAddress>
+  /** Home relay URL, if the peer has one; lets the dial work before any direct path exists. */
+  readonly relay?: string | undefined
 }
 
 export class IrohEndpoint extends Context.Service<IrohEndpoint, {
@@ -22,6 +23,12 @@ export class IrohEndpoint extends Context.Service<IrohEndpoint, {
   readonly id: string
   /** Sockets actually bound, port 0 resolved, as `HttpServer.address` reports its own. */
   readonly addresses: ReadonlyArray<NetAddress.InetAddress>
+  /** Waits until the endpoint has a home relay (immediate for `network: "private"`). */
+  readonly online: Effect.Effect<void>
+  /** How peers can reach this endpoint right now: direct addresses and home relay. */
+  readonly address: Effect.Effect<PeerAddress>
+  /** Open connections by remote EndpointId, dialed or accepted; closed ones drop out. */
+  readonly connections: SubscriptionRef.SubscriptionRef<ReadonlyMap<string, I.Connection>>
   /**
    * Incoming connections negotiated with `alpn`, after the TLS handshake. Registering advertises
    * the ALPN; closing the scope withdraws it. Connections for unregistered ALPNs are refused.
@@ -31,31 +38,79 @@ export class IrohEndpoint extends Context.Service<IrohEndpoint, {
   readonly connect: (peer: PeerAddress, alpn: string) => Effect.Effect<I.Connection, unknown, Scope.Scope>
 }>()("effect-iroh/IrohEndpoint") {}
 
+/**
+ * - `"private"`: no relays, no discovery; peers are dialed by key plus direct addresses.
+ * - `"n0"`: n0's public relays and DNS address lookup, so peers anywhere can dial by ticket.
+ * - `{ relays }`: n0 address lookup with your own relays.
+ */
+export type Network = "private" | "n0" | { readonly relays: ReadonlyArray<string> }
+
 export interface Options {
   /** 32-byte ed25519 secret key, hex. Fixes the EndpointId. */
   readonly secretKey: Redacted.Redacted<string>
-  /** Defaults to 127.0.0.1:0. iroh also binds an IPv6 socket alongside it. */
+  /** Defaults to `"private"`. */
+  readonly network?: Network | undefined
+  /**
+   * Defaults to 127.0.0.1:0 for `"private"` and to iroh's own (all interfaces, ephemeral port)
+   * otherwise. iroh also binds an IPv6 socket alongside an IPv4 one.
+   */
   readonly bind?: NetAddress.InetAddress | undefined
 }
 
 const bytes = (s: string) => Array.from(new TextEncoder().encode(s))
 const text = (b: ReadonlyArray<number>) => new TextDecoder().decode(Uint8Array.from(b))
 
-/** Private endpoint: no n0 discovery, no relays. Peers are dialed by key plus direct addresses. */
+/** Parses iroh's `ip:port` strings, skipping any it reports that NetAddress doesn't model. */
+export const parseAddresses = (raw: ReadonlyArray<string>): ReadonlyArray<NetAddress.InetAddress> =>
+  raw.flatMap((s) => {
+    const parsed = NetAddress.inetAddressFromString(s)
+    return Result.isSuccess(parsed) ? [parsed.success] : []
+  })
+
+export const toEndpointAddr = (peer: PeerAddress): I.EndpointAddr =>
+  new iroh.EndpointAddr(iroh.EndpointId.fromString(peer.id), peer.relay ?? null, peer.addresses.map(NetAddress.formatInet))
+
+export const fromEndpointAddr = (addr: I.EndpointAddr): PeerAddress => ({
+  id: addr.id().toString(),
+  addresses: parseAddresses(addr.directAddresses()),
+  relay: addr.relayUrl() ?? undefined
+})
+
 export const make = (options: Options): Effect.Effect<IrohEndpoint["Service"], never, Scope.Scope> =>
   Effect.gen(function*() {
-    const bind = options.bind ?? NetAddress.inetAddressUnsafe(NetAddress.ipv4Loopback, 0)
+    const network = options.network ?? "private"
+    const bind = options.bind ?? (network === "private" ? NetAddress.inetAddressUnsafe(NetAddress.ipv4Loopback, 0) : undefined)
     const endpoint = yield* Effect.acquireRelease(
       Effect.promise(() => {
         const b = iroh.Endpoint.builder()
-        b.applyMinimal()
+        if (network === "private") {
+          b.applyMinimal()
+          b.relayMode(iroh.RelayMode.disabled())
+        } else {
+          b.applyN0()
+          if (network !== "n0") b.relayMode(iroh.RelayMode.customFromUrls([...network.relays]))
+        }
         b.secretKey(Array.from(Buffer.from(Redacted.value(options.secretKey), "hex")))
-        b.relayMode(iroh.RelayMode.disabled())
-        b.bindAddr(NetAddress.formatInet(bind))
+        if (bind) b.bindAddr(NetAddress.formatInet(bind))
         return b.bind()
       }),
       (ep) => Effect.promise(() => ep.close())
     )
+
+    const connections = yield* SubscriptionRef.make<ReadonlyMap<string, I.Connection>>(new Map())
+    const track = (conn: I.Connection) =>
+      Effect.gen(function*() {
+        const id = conn.remoteId().toString()
+        yield* SubscriptionRef.update(connections, (m) => new Map(m).set(id, conn))
+        yield* Effect.forkScoped(Effect.promise(() => conn.closed().catch(() => "")).pipe(
+          Effect.andThen(SubscriptionRef.update(connections, (m) => {
+            if (m.get(id) !== conn) return m
+            const next = new Map(m)
+            next.delete(id)
+            return next
+          }))
+        ))
+      })
 
     const routes = new Map<string, Queue.Queue<I.Connection>>()
     const advertise = () => endpoint.setAlpns([...routes.keys()].map(bytes))
@@ -71,7 +126,7 @@ export const make = (options: Options): Effect.Effect<IrohEndpoint["Service"], n
             Effect.flatMap((conn) => {
               const queue = routes.get(text(conn.alpn()))
               return queue
-                ? Queue.offer(queue, conn)
+                ? Effect.andThen(track(conn), Queue.offer(queue, conn))
                 : Effect.sync(() => conn.close(0n, bytes("unknown alpn")))
             }),
             Effect.catchCause((cause) => Effect.logDebug("iroh handshake failed", cause))
@@ -80,10 +135,15 @@ export const make = (options: Options): Effect.Effect<IrohEndpoint["Service"], n
       }
     }).pipe(Effect.forkScoped)
 
+    // Tracking forks live as long as the endpoint, not the caller's scope.
+    const endpointScope = yield* Effect.scope
     return IrohEndpoint.of({
       endpoint,
       id: endpoint.id().toString(),
-      addresses: endpoint.boundSockets().map(NetAddress.inetAddressFromStringUnsafe),
+      addresses: parseAddresses(endpoint.boundSockets()),
+      online: network === "private" ? Effect.void : Effect.promise(() => endpoint.online()),
+      address: Effect.sync(() => fromEndpointAddr(endpoint.addr())),
+      connections,
       accept: (alpn) =>
         Effect.acquireRelease(
           Effect.gen(function*() {
@@ -99,11 +159,8 @@ export const make = (options: Options): Effect.Effect<IrohEndpoint["Service"], n
         ),
       connect: (peer, alpn) =>
         Effect.acquireRelease(
-          Effect.tryPromise(() =>
-            endpoint.connect(
-              new iroh.EndpointAddr(iroh.EndpointId.fromString(peer.id), null, peer.addresses.map(NetAddress.formatInet)),
-              bytes(alpn)
-            )
+          Effect.tryPromise(() => endpoint.connect(toEndpointAddr(peer), bytes(alpn))).pipe(
+            Effect.tap((conn) => track(conn).pipe(Effect.provideService(Scope.Scope, endpointScope)))
           ),
           (conn) => Effect.sync(() => conn.close(0n, []))
         )
