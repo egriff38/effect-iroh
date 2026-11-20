@@ -1,0 +1,14 @@
+{
+  "name": "example-web-chat",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "bun run src/main.ts demo",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "@effect/platform-bun": "catalog:examples",
+    "effect": "catalog:prod",
+    "effect-iroh": "workspace:*"
+  }
+}
