@@ -1,0 +1,13 @@
+{
+  "name": "example-parallel-streams",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "bun run src/main.ts",
+    "typecheck": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "effect": "catalog:prod",
+    "effect-iroh": "workspace:*"
+  }
+}
