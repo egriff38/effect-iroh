@@ -7,7 +7,7 @@ import { NetAddress } from "effect/net"
 import { AsyncResult, Atom, AtomRegistry } from "effect/reactivity"
 import { RpcSerialization, RpcServer } from "effect/rpc"
 import { IrohEndpoint, IrohRpc } from "effect-iroh"
-import { Crdt, Replica, Replicated } from "effect-replicated"
+import { Crdt, Replica, Replicated } from "./replicated/index.js"
 
 // ── element module: a service of CRDT fields, plain atoms over it ────────────
 

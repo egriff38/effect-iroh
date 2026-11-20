@@ -54,27 +54,12 @@ importers:
       effect-iroh:
         specifier: workspace:*
         version: link:../../packages/effect-iroh
-      effect-replicated:
-        specifier: workspace:*
-        version: link:../../packages/effect-replicated
 
   packages/effect-iroh:
     dependencies:
       '@number0/iroh':
         specifier: catalog:prod
         version: 1.2.0
-    devDependencies:
-      effect:
-        specifier: catalog:prod
-        version: 4.1.4
-      publint:
-        specifier: catalog:dev
-        version: 0.3.25
-      tsdown:
-        specifier: catalog:dev
-        version: 0.22.14(publint@0.3.25)(typescript@5.9.3)
-
-  packages/effect-replicated:
     devDependencies:
       effect:
         specifier: catalog:prod

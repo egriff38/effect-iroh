@@ -4,11 +4,11 @@
   "type": "module",
   "scripts": {
     "start": "bun run src/main.ts",
+    "test": "bun test",
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
     "effect": "catalog:prod",
-    "effect-iroh": "workspace:*",
-    "effect-replicated": "workspace:*"
+    "effect-iroh": "workspace:*"
   }
 }

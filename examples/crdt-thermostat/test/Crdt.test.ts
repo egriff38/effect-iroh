@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import { Schema } from "effect"
-import { Crdt } from "../src/index.js"
+import { Crdt } from "../src/replicated/index.js"
 
 const { MVRegister, PNCounter } = Crdt
 

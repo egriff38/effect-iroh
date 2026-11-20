@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import { Context, Effect, Layer, Schedule, Schema, SubscriptionRef } from "effect"
 import { RpcTest } from "effect/rpc"
-import { Crdt, Replica, Replicated } from "../src/index.js"
+import { Crdt, Replica, Replicated } from "../src/replicated/index.js"
 
 const Setpoint = Crdt.MVRegister(Schema.Number, (concurrent) => Math.max(...concurrent))
 

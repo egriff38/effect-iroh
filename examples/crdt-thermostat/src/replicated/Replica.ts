@@ -40,7 +40,7 @@ export interface Options {
 export class Replica extends Context.Service<Replica, Options & {
   /** Fields this replica serves, by `<service key>/<field>`. */
   readonly fields: Map<string, Field<unknown, unknown>>
-}>()("effect-replicated/Replica") {}
+}>()("example/replicated/Replica") {}
 
 export const layer = (options: Options): Layer.Layer<Replica> =>
   Layer.sync(Replica, () => Replica.of({ ...options, fields: new Map() }))
@@ -49,5 +49,5 @@ export const layer = (options: Options): Layer.Layer<Replica> =>
 export const layerOffline: Layer.Layer<Replica> = layer({
   self: "local",
   peers: () => [],
-  client: () => Effect.die("effect-replicated: offline replica has no peers")
+  client: () => Effect.die("replicated: offline replica has no peers")
 })

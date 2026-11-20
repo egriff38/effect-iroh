@@ -4,19 +4,14 @@
 
 [iroh](https://iroh.computer) (QUIC, dial by public key, NAT traversal) as a transport for [Effect](https://effect.website): endpoints as layers, iroh streams as Effect `Socket`s, Effect RPC (and so `AtomRpc`) over iroh.
 
-| Package | What it is | Depends on |
-|---|---|---|
-| [`effect-iroh`](packages/effect-iroh) | `IrohEndpoint` as a scoped layer (in the shape of `HttpServer`), iroh streams as Effect `Socket`s, Effect RPC client/server protocols, a per-peer client cache | `effect`, `@number0/iroh` |
-| [`effect-replicated`](packages/effect-replicated) | Services whose fields are state-based CRDTs, replicated over **any** Effect RPC protocol. PN-counter and multi-value register with a pluggable resolver | `effect` |
-
-They are separate on purpose: `effect-replicated` doesn't know about iroh (its tests run in memory with `RpcTest`), and `effect-iroh` doesn't know about atoms or CRDTs. Everything else composes from Effect itself: `AtomRpc` for request/response atoms, `runtime.subscriptionRef` for atoms over replicated fields.
+The core is one package, [`effect-iroh`](packages/effect-iroh) (depends on `effect` and `@number0/iroh`): `IrohEndpoint` as a scoped layer (in the shape of `HttpServer`), iroh streams as Effect `Socket`s, Effect RPC client/server protocols, a per-peer client cache. It doesn't know about atoms or CRDTs; those compose from Effect itself (`AtomRpc`, `runtime.subscriptionRef`) and live in examples.
 
 ## Examples
 
 | Example | Shows |
 |---|---|
 | [`examples/atomrpc-thermostat`](examples/atomrpc-thermostat) | Provider/consumer with only `AtomRpc` + `effect-iroh`: a typed `RpcGroup`, a live stream atom, a mutation |
-| [`examples/crdt-thermostat`](examples/crdt-thermostat) | Three replicas over a private iroh network: concurrent increments converge exactly, conflicting writes resolve identically, a later write supersedes them. Also a Tern notebook |
+| [`examples/crdt-thermostat`](examples/crdt-thermostat) | State-based CRDT services ([example code](examples/crdt-thermostat/src/replicated), not a package) replicated over iroh: concurrent increments converge exactly, conflicting writes resolve identically, a later write supersedes them. Also a Tern notebook |
 
 ```sh
 pnpm install
@@ -59,7 +54,7 @@ const temperature = Thermostat.runtime.atom(Stream.unwrap(Effect.gen(function*()
 const setTemperature = Thermostat.mutation("SetTemperature")
 ```
 
-For CRDT-replicated services over the same transport, see [`examples/crdt-thermostat`](examples/crdt-thermostat) and [`effect-replicated`](packages/effect-replicated).
+For CRDT-replicated services over the same transport, see [`examples/crdt-thermostat`](examples/crdt-thermostat).
 
 ## Known issues
 
