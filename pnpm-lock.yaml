@@ -55,6 +55,15 @@ importers:
         specifier: workspace:*
         version: link:../../packages/effect-iroh
 
+  examples/pair-by-ticket:
+    dependencies:
+      effect:
+        specifier: catalog:prod
+        version: 4.1.4
+      effect-iroh:
+        specifier: workspace:*
+        version: link:../../packages/effect-iroh
+
   packages/effect-iroh:
     dependencies:
       '@number0/iroh':
